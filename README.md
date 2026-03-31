@@ -59,7 +59,7 @@ We instrument the following regions with `os_signpost`:
 Use the tracing script (requires an Instruments template to be set up first):
 
 ```bash
-# See CLAUDE_Context/trace.sh for the tracing script
+
 ```
 
 ## Appendix
