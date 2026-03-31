@@ -15,6 +15,10 @@
 
 #include <executorch/extension/llm/runner/stats.h>
 
+#ifdef __APPLE__
+#include <os/signpost.h>
+#endif
+
 namespace executorch {
 namespace extension {
 namespace llm {
@@ -31,6 +35,13 @@ TextDecoderRunner::TextDecoderRunner(Module* module, IOManager* io_manager)
 ::executorch::runtime::Result<executorch::aten::Tensor> TextDecoderRunner::step(
     TensorPtr& tokens,
     int64_t start_pos) {
+#ifdef __APPLE__
+  static os_log_t log =
+      os_log_create("com.executorch.spinquant", "PointsOfInterest");
+  os_signpost_id_t fwd_spid = os_signpost_id_generate(log);
+  os_signpost_interval_begin(log, fwd_spid, "ForwardPass",
+      "pos=%lld tokens=%zd", start_pos, tokens->numel());
+#endif
   // ET_LOG(Info, "Input token %" PRIu64, input_token);
   auto method_meta_result = module_->method_meta("forward");
   if (!method_meta_result.ok()) {
@@ -68,6 +79,9 @@ TextDecoderRunner::TextDecoderRunner(Module* module, IOManager* io_manager)
         "Non Tensor Output returned from executing LLM");
 
     // Return the logits tensor
+#ifdef __APPLE__
+    os_signpost_interval_end(log, fwd_spid, "ForwardPass");
+#endif
     return outputs_res.get()[0].toTensor();
   } else { // no kv cache
     (void)start_pos; // unused
@@ -82,6 +96,9 @@ TextDecoderRunner::TextDecoderRunner(Module* module, IOManager* io_manager)
         "Non Tensor Output returned from executing LLM");
 
     // Return the logits tensor
+#ifdef __APPLE__
+    os_signpost_interval_end(log, fwd_spid, "ForwardPass");
+#endif
     return outputs_res.get()[0].toTensor();
   }
 }

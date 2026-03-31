@@ -103,6 +103,42 @@ Added `os_signpost` interval markers around the Prefill and Decode phases in `Te
 
 These signposts appear in Instruments under the **Points of Interest** category with the subsystem `com.executorch.spinquant`.
 
+### 2. Each forward pass signpost
+
+**File:** `extension/llm/runner/text_decoder_runner.cpp`
+
+Added `os_signpost` interval markers around every `TextDecoderRunner::step()` call. This captures each individual forward pass — the one large prefill forward pass and each decode step. All instrumentation is guarded by `#ifdef __APPLE__`.
+
+**Changes:**
+
+- Include `<os/signpost.h>` at the top:
+  ```cpp
+  #ifdef __APPLE__
+  #include <os/signpost.h>
+  #endif
+  ```
+
+- At the start of `step()`, create a per-call signpost ID and begin the interval (includes position and token count metadata):
+  ```cpp
+  #ifdef __APPLE__
+  static os_log_t log =
+      os_log_create("com.executorch.spinquant", "PointsOfInterest");
+  os_signpost_id_t fwd_spid = os_signpost_id_generate(log);
+  os_signpost_interval_begin(log, fwd_spid, "ForwardPass",
+      "pos=%lld tokens=%zd", start_pos, tokens->numel());
+  #endif
+  ```
+
+- End the interval before each return path (both kv-cache and non-kv-cache branches):
+  ```cpp
+  #ifdef __APPLE__
+  os_signpost_interval_end(log, fwd_spid, "ForwardPass");
+  #endif
+  return outputs_res.get()[0].toTensor();
+  ```
+
+Each forward pass appears as a separate "ForwardPass" interval in Instruments. The prefill forward pass will have `tokens=N` (number of prompt tokens), while each decode step will have `tokens=1`.
+
 ### Generating a processor trace
 
 Use the tracing script (requires an Instruments template to be set up first):
