@@ -59,7 +59,7 @@ We instrument the following regions with `os_signpost`:
 Use the tracing script (requires an Instruments template to be set up first):
 
 ```bash
-
+./path/to/ece1755-spinquant-profiling/APPLE_xctrace.sh
 ```
 
 ## Appendix
