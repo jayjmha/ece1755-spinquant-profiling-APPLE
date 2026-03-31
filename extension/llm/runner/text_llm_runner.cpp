@@ -19,6 +19,10 @@
 #include <pytorch/tokenizers/sentencepiece.h>
 #include <pytorch/tokenizers/tiktoken.h>
 
+#ifdef __APPLE__
+#include <os/signpost.h>
+#endif
+
 namespace executorch::extension::llm {
 
 using ::executorch::extension::Module;
@@ -76,6 +80,11 @@ Error TextLLMRunner::generate(
     const GenerationConfig& config,
     std::function<void(const std::string&)> token_callback,
     std::function<void(const Stats&)> stats_callback) {
+#ifdef __APPLE__
+  static os_log_t log =
+      os_log_create("com.executorch.spinquant", "PointsOfInterest");
+  static os_signpost_id_t spid = os_signpost_id_generate(log);
+#endif
   // Prepare the inputs.
   // Use ones-initialized inputs.
   ET_CHECK_MSG(!prompt.empty(), "Prompt cannot be null");
@@ -169,7 +178,13 @@ Error TextLLMRunner::generate(
   if (config.echo) {
     wrapped_callback(prompt);
   }
+#ifdef __APPLE__
+  os_signpost_interval_begin(log, spid, "Prefill");
+#endif
   auto prefill_res = text_prefiller_->prefill(prompt_tokens, pos_);
+#ifdef __APPLE__
+  os_signpost_interval_end(log, spid, "Prefill");
+#endif
   ET_CHECK_OK_OR_RETURN_ERROR(prefill_res.error());
   uint64_t cur_token = prefill_res.get();
   stats_->first_token_ms = time_in_ms();
@@ -194,12 +209,18 @@ Error TextLLMRunner::generate(
   prompt_tokens.push_back(cur_token);
 
   // Generate max_new_tokens - 1 because prefill already generated 1 token.
+#ifdef __APPLE__
+  os_signpost_interval_begin(log, spid, "Decode");
+#endif
   auto generate_result = text_token_generator_->generate(
       prompt_tokens,
       pos_,
       max_new_tokens - 1,
       temperature_ == -1.0f ? config.temperature : temperature_,
       wrapped_callback);
+#ifdef __APPLE__
+  os_signpost_interval_end(log, spid, "Decode");
+#endif
   if (!generate_result.ok()) {
     return generate_result.error();
   }

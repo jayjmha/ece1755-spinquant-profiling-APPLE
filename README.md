@@ -1,6 +1,6 @@
 # ECE1755 - Profiling SpinQuant LLM on Apple M4 Pro
 
-This project profiles **SpinQuant** (a quantized LLM model) and the original Llama model using **ExecuTorch** on Apple M4 Pro CPU. We use `os_signpost` instrumentation to capture detailed profiling of prefill/decode phases, forward passes, Fast Hadamard Transform (FHT) kernels, and XNNPACK delegates.
+This project profiles **SpinQuant** (a quantized LLM model) and the original Llama model using **ExecuTorch** on Apple M4 Pro CPU using Xcode Instruments. We use `os_signpost` instrumentation to capture detailed profiling of prefill/decode phases, forward passes, Fast Hadamard Transform (FHT) kernels, and XNNPACK delegates.
 
 This is the final project for **ECE1755: Parallel Computer Architecture and Programming** at the University of Toronto.
 
@@ -53,6 +53,55 @@ We instrument the following regions with `os_signpost`:
 2. **Each forward pass** — One large prefill phase + each individual decoding step
 3. **FHT (Fast Hadamard Transform)** — Kernel introduced in SpinQuant
 4. **XNNPACK delegates** — `XNNConvert`, `XNNFullyConnected`, labeled in signpost
+
+### 1. Prefill / Decode signpost
+
+**File:** `extension/llm/runner/text_llm_runner.cpp`
+
+Added `os_signpost` interval markers around the Prefill and Decode phases in `TextLLMRunner::generate()`. All instrumentation is guarded by `#ifdef __APPLE__`.
+
+**Changes:**
+
+- Include `<os/signpost.h>` at the top:
+  ```cpp
+  #ifdef __APPLE__
+  #include <os/signpost.h>
+  #endif
+  ```
+
+- Create a log handle and signpost ID at the start of `generate()`:
+  ```cpp
+  #ifdef __APPLE__
+  static os_log_t log =
+      os_log_create("com.executorch.spinquant", "PointsOfInterest");
+  static os_signpost_id_t spid = os_signpost_id_generate(log);
+  #endif
+  ```
+
+- Wrap the prefill call with signpost begin/end:
+  ```cpp
+  #ifdef __APPLE__
+  os_signpost_interval_begin(log, spid, "Prefill");
+  #endif
+  auto prefill_res = text_prefiller_->prefill(prompt_tokens, pos_);
+  #ifdef __APPLE__
+  os_signpost_interval_end(log, spid, "Prefill");
+  #endif
+  ```
+
+- Wrap the decode (token generation) call with signpost begin/end:
+  ```cpp
+  #ifdef __APPLE__
+  os_signpost_interval_begin(log, spid, "Decode");
+  #endif
+  auto generate_result = text_token_generator_->generate(
+      prompt_tokens, pos_, max_new_tokens - 1, ...);
+  #ifdef __APPLE__
+  os_signpost_interval_end(log, spid, "Decode");
+  #endif
+  ```
+
+These signposts appear in Instruments under the **Points of Interest** category with the subsystem `com.executorch.spinquant`.
 
 ### Generating a processor trace
 
