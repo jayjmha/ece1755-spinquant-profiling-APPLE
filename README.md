@@ -139,6 +139,41 @@ Added `os_signpost` interval markers around every `TextDecoderRunner::step()` ca
 
 Each forward pass appears as a separate "ForwardPass" interval in Instruments. The prefill forward pass will have `tokens=N` (number of prompt tokens), while each decode step will have `tokens=1`.
 
+### 3. FHT (Fast Hadamard Transform) signpost
+
+**File:** `extension/llm/custom_ops/op_fast_hadamard_transform.cpp`
+
+Added `os_signpost` interval markers around the `fast_hadamard_transform_out` kernel (`llama::fast_hadamard_transform.out`), which is the custom op introduced by SpinQuant. All instrumentation is guarded by `#ifdef __APPLE__`.
+
+**Changes:**
+
+- Include `<os/signpost.h>` at the top:
+  ```cpp
+  #ifdef __APPLE__
+  #include <os/signpost.h>
+  #endif
+  ```
+
+- At the start of `fast_hadamard_transform_out()`, begin the signpost interval:
+  ```cpp
+  #ifdef __APPLE__
+  static os_log_t log =
+      os_log_create("com.executorch.spinquant", "PointsOfInterest");
+  os_signpost_id_t fht_spid = os_signpost_id_generate(log);
+  os_signpost_interval_begin(log, fht_spid, "FHT");
+  #endif
+  ```
+
+- End the interval before the return:
+  ```cpp
+  #ifdef __APPLE__
+  os_signpost_interval_end(log, fht_spid, "FHT");
+  #endif
+  return out;
+  ```
+
+Each FHT invocation appears as an "FHT" interval in Instruments. This kernel only runs in SpinQuant models, so it will not appear when profiling the original (non-quantized) model.
+
 ### Generating a processor trace
 
 Use the tracing script (requires an Instruments template to be set up first):

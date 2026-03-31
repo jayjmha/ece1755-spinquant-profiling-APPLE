@@ -12,6 +12,10 @@
 #include <executorch/kernels/portable/cpu/util/reduce_util.h> // For apply_over_dim.
 #include <executorch/runtime/kernel/kernel_includes.h>
 
+#ifdef __APPLE__
+#include <os/signpost.h>
+#endif
+
 namespace torch {
 namespace executor {
 namespace native {
@@ -20,6 +24,12 @@ Tensor& fast_hadamard_transform_out(
     RuntimeContext& ctx,
     const Tensor& mat,
     Tensor& out) {
+#ifdef __APPLE__
+  static os_log_t log =
+      os_log_create("com.executorch.spinquant", "PointsOfInterest");
+  os_signpost_id_t fht_spid = os_signpost_id_generate(log);
+  os_signpost_interval_begin(log, fht_spid, "FHT");
+#endif
   ET_KERNEL_CHECK_MSG(
       ctx,
       resize_tensor(out, mat.sizes()) == Error::Ok,
@@ -93,6 +103,9 @@ Tensor& fast_hadamard_transform_out(
           out.dim() - 1);
     }
   });
+#ifdef __APPLE__
+  os_signpost_interval_end(log, fht_spid, "FHT");
+#endif
   return out;
 }
 } // namespace native
