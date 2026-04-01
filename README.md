@@ -174,6 +174,40 @@ Added `os_signpost` interval markers around the `fast_hadamard_transform_out` ke
 
 Each FHT invocation appears as an "FHT" interval in Instruments. This kernel only runs in SpinQuant models, so it will not appear when profiling the original (non-quantized) model.
 
+### 4. XNNPACK delegate signpost (per-operator with op name)
+
+**File:** `backends/xnnpack/third-party/XNNPACK/src/runtime.c`
+
+Added `os_signpost` interval markers around each individual XNNPACK operator inside `xnn_invoke_runtime()`. Each signpost includes the actual operator name (e.g., `Fully Connected`, `Convert`, etc.) as metadata. All instrumentation is guarded by `#ifdef __APPLE__`.
+
+**Changes:**
+
+- Include `<os/signpost.h>` after the existing includes:
+  ```c
+  #ifdef __APPLE__
+  #include <os/signpost.h>
+  #endif
+  ```
+
+- Inside the operator loop in `xnn_invoke_runtime()`, wrap each `xnn_run_operator_with_index()` call:
+  ```c
+  #ifdef __APPLE__
+  static os_log_t xnn_log_handle = NULL;
+  if (xnn_log_handle == NULL) {
+    xnn_log_handle = os_log_create("com.executorch.spinquant", "PointsOfInterest");
+  }
+  const char* op_name = xnn_operator_type_to_string_v2(runtime->opdata[i].operator_objects[j]);
+  os_signpost_id_t op_spid = os_signpost_id_generate(xnn_log_handle);
+  os_signpost_interval_begin(xnn_log_handle, op_spid, "XNNDelegate", "%s", op_name);
+  #endif
+  const enum xnn_status status = xnn_run_operator_with_index(...);
+  #ifdef __APPLE__
+  os_signpost_interval_end(xnn_log_handle, op_spid, "XNNDelegate", "%s", op_name);
+  #endif
+  ```
+
+Each XNNPACK operator appears as an "XNNDelegate" interval in Instruments with the operator name (e.g., `Fully Connected (NC, F32)`, `Convert (NC, F16, F32)`) shown as metadata. This allows distinguishing between XNNConvert and XNNFullyConnected calls directly in the trace.
+
 ### Generating a processor trace
 
 Use the tracing script (requires an Instruments template to be set up first):
